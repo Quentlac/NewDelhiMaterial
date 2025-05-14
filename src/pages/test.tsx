@@ -17,16 +17,31 @@ export default function Test() {
 
   const router = useRouter();
   const handlePayNow = async () => {
-    await fetch('/api/order', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        plastic: plasticQty,
-        metal: metalQty,
-        textile: textileQty
-      }),
-    });
-    router.push('/commande-confirmee');
+    try {
+      const res = await fetch('/api/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plastic: plasticQty,
+          metal: metalQty,
+          textile: textileQty
+        }),
+      });
+
+      if (!res.ok) {
+        console.error('Erreur lors de la commande');
+        return;
+      }
+
+      const data = await res.json();
+      if (data?.id) {
+        router.push(`/commande-confirmee?id=${data.id}`);
+      } else {
+        console.error('ID de commande manquant dans la réponse');
+      }
+    } catch (error) {
+      console.error('Erreur de requête :', error);
+    }
   };
 
   useEffect(() => {
