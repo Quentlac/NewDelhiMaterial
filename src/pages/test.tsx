@@ -171,6 +171,7 @@ export default function Test() {
 
           <div className="mt-6">
             <ul className="list bg-base-100 rounded-box shadow-md max-w-2xl mx-auto">
+              <h2 className="p-4 pb-2 text-xl font-bold">Stocks</h2>
               <li className="p-4 pb-2 text-xs opacity-60 tracking-wide">20 derniers objets collectés</li>
               {materials
                 .sort((a: any, b: any) => {
@@ -183,15 +184,21 @@ export default function Test() {
                   <li key={index} className="list-row">
                     <div>
                       <img
-                        className="size-10 rounded-box object-cover"
+                        className="size-15 rounded-box object-cover"
                         src={`/image/${Math.floor(Math.random() * 3) + 1}.jpg`}
                         alt={item.item_name}
                       />
                     </div>
-                    <div>
-                      <div>{item.item_name}</div>
-                      <div className="text-xs uppercase font-semibold opacity-60">{item.material_category}</div>
+                    <div className="place-content-between">
+                      <div>
+                        <div className="font-semibold">{item.item_name}</div>
+                        <div className="text-xs uppercase font-semibold opacity-60">{item.material_category}</div>
+                      </div>
+                        <p className="list-col-wrap text-xs">
+                        {item.description.charAt(0).toUpperCase() + item.description.slice(1).toLowerCase()}
+                        </p>
                     </div>
+                    
                   </li>
                 ))}
             </ul>
