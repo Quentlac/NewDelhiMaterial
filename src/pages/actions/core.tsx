@@ -1,6 +1,6 @@
 "use server"
-export async function getTimeToOrder(metalQty: number, textileQty: number) : Promise<number> {
+export async function getTimeToOrder(metalQty: number, textileQty: number, plasticQty: number) : Promise<number> {
 
-    return metalQty + textileQty;
+    return metalQty + textileQty + plasticQty;
 
 }
