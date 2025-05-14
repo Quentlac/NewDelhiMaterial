@@ -59,7 +59,7 @@ export default function MaCommande() {
         </table>
       </div>
       <div className="mt-6 text-center">
-        <a href="/" className="btn btn-primary">Retour à l'accueil</a>
+        <a href="/test" className="btn btn-primary">Retour à l'accueil</a>
       </div>
     </div>
   );
