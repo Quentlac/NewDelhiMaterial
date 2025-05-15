@@ -1,6 +1,18 @@
+import Layout from "@/components/Layout";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import db from "@/lib/db";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+} from "chart.js";
+import { Bar } from "react-chartjs-2";
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 type Commande = {
   type: string;
@@ -118,52 +130,183 @@ export default function MaCommande() {
   const id = search.get("id");
   
   useEffect(() => {
+    if (!id) return;
 
-    // Simuler récupération d'une commande (ici juste un exemple)
-    console.log("Commande ID :", id);        // ← appears in DevTools
-    const example = [
-      { type: "plastique", quantity: 12, pricePerKg: PRICES.plastique },
-      { type: "metal", quantity: 5, pricePerKg: PRICES.metal },
-      { type: "textile", quantity: 7, pricePerKg: PRICES.textile },
-    ];
-    setCommande(example);
+    fetch(`/api/get-order?id=${id}`)
+      .then(res => res.json())
+      .then(data => {
+        if (!data) return;
+        const result = [
+          { type: "plastique", quantity: data.plastic_qty, pricePerKg: PRICES.plastique },
+          { type: "metal", quantity: data.metal_qty, pricePerKg: PRICES.metal },
+          { type: "textile", quantity: data.textile_qty, pricePerKg: PRICES.textile },
+        ];
+        setCommande(result);
+      });
   }, [id]);
 
   const total = commande.reduce((sum, item) => sum + item.quantity * item.pricePerKg, 0);
+
+  // Prepare data for charts per material
+  const chartData = (item: Commande) => {
+    const mat = item.type === "plastique" ? "Plastic" : item.type === "metal" ? "Metal" : "Textile";
+    const levels: ("50" | "75" | "100")[] = ["50", "75", "100"];
+    const estimations = levels.map((lvl) => estimate(mat, item.quantity, lvl));
+
+    const labels = levels.map(lvl => `${lvl}%`);
+    const daysData = estimations.map(e => {
+      const diff = (e.eta.getTime() - Date.now()) / 86400000; // days difference
+      return Math.round(diff * 100) / 100;
+    });
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: "Jours estimés avant disponibilité",
+          data: daysData,
+          backgroundColor: ["#3b82f6", "#2563eb", "#1e40af"],
+        },
+      ],
+    };
+  };
+
+  const chartOptions = {
+    responsive: true,
+    plugins: {
+      legend: { position: "top" as const },
+      title: {
+        display: false,
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        title: {
+          display: true,
+          text: "Jours",
+        },
+      },
+    },
+  };
+
+  const cart = { count: 0, subtotal: 0 };
+  const handlePayNow = () => {};
+
   return (
-    <div className="min-h-screen bg-base-100 p-6">
-      <h1 className="text-3xl font-bold text-center mb-6">Ma commande</h1>
-      <div className="overflow-x-auto">
-        <table className="table w-full bg-base-200 rounded-box shadow">
-          <thead>
-            <tr>
-              <th>Matériau</th>
-              <th>Quantité (kg)</th>
-              <th>Prix unitaire</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {commande.map((item, index) => (
-              <tr key={index}>
-                <td className="capitalize">{item.type}</td>
-                <td>{item.quantity}</td>
-                <td>${item.pricePerKg.toFixed(2)}</td>
-                <td>${(item.quantity * item.pricePerKg).toFixed(2)}</td>
+    <Layout cart={cart} handlePayNow={handlePayNow}>
+      <div className="min-h-screen bg-base-100 p-6">
+        <h1 className="text-3xl font-bold text-center mb-6">Ma commande</h1>
+        <div className="overflow-x-auto">
+          <table className="table w-full bg-base-200 rounded-box shadow">
+            <thead>
+              <tr>
+                <th>Matériau</th>
+                <th>Quantité (kg)</th>
+                <th>Prix unitaire</th>
+                <th>Total</th>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <th colSpan={3}>Total</th>
-              <th>${total.toFixed(2)}</th>
-            </tr>
-          </tfoot>
-        </table>
+            </thead>
+            <tbody>
+              {commande.map((item, index) => (
+                <tr key={index}>
+                  <td className="capitalize">{item.type}</td>
+                  <td>{item.quantity}</td>
+                  <td>${item.pricePerKg.toFixed(2)}</td>
+                  <td>${(item.quantity * item.pricePerKg).toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th colSpan={3}>Total</th>
+                <th>${total.toFixed(2)}</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        {commande.length > 0 && (
+          <div className="mt-12">
+            <h2 className="text-2xl font-bold mb-4 text-center">Suivi de commande</h2>
+            {/* Section supprimée : cartes individuelles de disponibilité par matériau déplacées dans le modal global */}
+
+            <div className="mt-12">
+              <h2 className="text-2xl font-bold mb-4 text-center">Date estimée de disponibilité complète</h2>
+              <div className="max-w-2xl mx-auto bg-base-200 p-6 rounded-box shadow">
+                <table className="table w-full">
+                  <thead>
+                    <tr>
+                      <th>Certitude</th>
+                      <th>Date estimée</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {["50", "75", "100"].map(level => {
+                      const maxEta = commande.reduce((latest, item) => {
+                        const mat = item.type === "plastique" ? "Plastic" : item.type === "metal" ? "Metal" : "Textile";
+                        const eta = estimate(mat, item.quantity, level as "50" | "75" | "100").eta;
+                        return eta > latest ? eta : latest;
+                      }, new Date(0));
+                      return (
+                        <tr key={level}>
+                          <td>{level}%</td>
+                          <td>{maxEta.toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <p className="mt-4 text-sm opacity-60">
+                  Cette estimation utilise un modèle de processus de Poisson pour chaque matériau : l’estimation la plus lointaine parmi tous les matériaux est retenue pour chaque niveau de certitude.
+                </p>
+                <div className="text-center mt-4">
+                  <button className="btn btn-outline" onClick={() => document.getElementById('global_modal').showModal()}>
+                    En savoir plus
+                  </button>
+                </div>
+                <dialog id="global_modal" className="modal">
+                  <div className="modal-box w-full max-w-6xl max-h-[80vh] overflow-y-auto">
+                    <h3 className="font-bold text-lg mb-4">Détail de disponibilité par matériau</h3>
+                    <div className="flex flex-col gap-6">
+                      {commande.map((item) => {
+                        const mat = item.type === "plastique" ? "Plastic" : item.type === "metal" ? "Metal" : "Textile";
+                        const levels: ("50" | "75" | "100")[] = ["50", "75", "100"];
+                        const estimations = levels.map((lvl) => estimate(mat, item.quantity, lvl));
+                        return (
+                          <div key={item.type} className="card bg-base-200 p-4 shadow">
+                            <h3 className="text-lg font-semibold mb-2 capitalize">{item.type}</h3>
+                            <ul className="text-sm space-y-1">
+                              {estimations.map((e, i) => (
+                                <li key={i}>
+                                  {e.level} de chance d'avoir {e.requestedKg} kg → {e.etaString}
+                                </li>
+                              ))}
+                            </ul>
+                            <div className="mt-4 text-xs opacity-60">
+                              Estimé via un processus de Poisson avec λ = {LAMBDAS[mat]}.
+                            </div>
+                            <div className="mt-4 text-center">
+                              <Bar options={chartOptions} data={chartData(item)} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <form method="dialog" className="modal-backdrop">
+                    <button>Fermer</button>
+                  </form>
+                </dialog>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-6 text-center">
+          <a href="/" className="btn btn-primary">Retour à l'accueil</a>
+        </div>
       </div>
-      <div className="mt-6 text-center">
-        <a href="/test" className="btn btn-primary">Retour à l'accueil</a>
-      </div>
-    </div>
+    </Layout>
   );
 }

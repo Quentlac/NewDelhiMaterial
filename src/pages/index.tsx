@@ -1,115 +1,173 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
+"use client"
+import { useEffect, useState } from "react";
+import { getTimeToOrder } from "./actions/core";
+import { useRouter } from 'next/router';
+import useSWR from 'swr';
+import Layout from "@/components/Layout";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+const fetcher = (url: string) => fetch(url).then(res => res.json());
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+export default function Test() {
+  const { data: materials, error } = useSWR('/api/materials', fetcher);
 
-export default function Home() {
+  const [time, setTime] = useState<number>(0);
+  const [metalQty, setMetalQty] = useState<number>(0);
+  const [textileQty, setTextileQty] = useState<number>(0);
+  const [plasticQty, setPlasticQty] = useState<number>(0);
+  const [cart, setCart] = useState({ count: 0, subtotal: 0 });
+
+  const router = useRouter();
+  const handlePayNow = async () => {
+    try {
+      const res = await fetch('/api/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plastic: plasticQty,
+          metal: metalQty,
+          textile: textileQty
+        }),
+      });
+
+      if (!res.ok) {
+        console.error('Erreur lors de la commande');
+        return;
+      }
+
+      const data = await res.json();
+      if (data?.id) {
+        router.push(`/commande-confirmee?id=${data.id}`);
+      } else {
+        console.error('ID de commande manquant dans la réponse');
+      }
+    } catch (error) {
+      console.error('Erreur de requête :', error);
+    }
+  };
+
+  useEffect(() => {
+    getTimeToOrder(metalQty, textileQty, plasticQty).then(q => setTime(q));
+  }, [metalQty, textileQty, plasticQty]);
+
+  const handleAddToCart = () => {
+    const newSubtotal = (
+      plasticQty * 1.4 +
+      metalQty * 2.6 +
+      textileQty * 4.3
+    );
+    const newCount = [plasticQty, metalQty, textileQty].filter(q => q > 0).length;
+    setCart({ count: newCount, subtotal: newSubtotal });
+  };
+
+  if (error) return <div>Erreur de chargement des matériaux</div>;
+  if (!materials) return <div>Chargement des matériaux...</div>;
+
   return (
-    <div
-      className={`${geistSans.className} ${geistMono.className} grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]`}
-    >
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/pages/index.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <Layout cart={cart} handlePayNow={handlePayNow}>
+      {/* Contenu principal réorganisé */}
+      <main className="flex-grow px-6 flex">
+        {/* Hero Section à gauche */}
+        <div className="w-1/2">
+          <div
+            className="hero h-full"
+            style={{
+              backgroundImage: "url('https://ckinetics.com/fileupload/GIZ2.JPG')",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              position: "relative"
+            }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/40 to-black/20 opacity-90 z-0"></div>
+            <div className="hero-content text-center relative z-10">
+              <div className="max-w-md">
+                <h1 className="text-5xl font-bold">La révolution du recyclage industriel</h1>
+                <p className="py-6">
+                  PureDelhiMaterials propose des matières recyclées de haute qualité — plastiques, métaux et textiles — en gros pour les professionnels.
+                  Grâce à notre méthode de tri et traitement automatisée, nous offrons des matériaux fiables, écoresponsables et immédiatement disponibles.
+                </p>
+                <button className="btn btn-primary">Commençons</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Interface utilisateur à droite */}
+        <div className="w-1/2 flex flex-col gap-6 pl-5">
+          <div className="grid grid-cols-3 gap-4">
+            {/* Plastique */}
+            <div className="card bg-base-200 shadow-sm">
+              <div className="card-body items-center text-center">
+                <h2 className="card-title">Plastique</h2>
+                <p className="text-sm opacity-60">$1.40 / kg</p>
+                <input type="range" min={0} max="100" value={plasticQty} className="range" onChange={e => setPlasticQty(Number.parseInt(e.target.value))} />
+                <p>{plasticQty} kg</p>
+                <p className="text-sm text-gray-500">${(plasticQty * 1.4).toFixed(2)}</p>
+              </div>
+            </div>
+
+            {/* Métal */}
+            <div className="card bg-base-200 shadow-sm">
+              <div className="card-body items-center text-center">
+                <h2 className="card-title">Métal</h2>
+                <p className="text-sm opacity-60">$2.60 / kg</p>
+                <input type="range" min={0} max="100" value={metalQty} className="range" onChange={e => setMetalQty(Number.parseInt(e.target.value))} />
+                <p>{metalQty} kg</p>
+                <p className="text-sm text-gray-500">${(metalQty * 2.6).toFixed(2)}</p>
+              </div>
+            </div>
+
+            {/* Textile */}
+            <div className="card bg-base-200 shadow-sm">
+              <div className="card-body items-center text-center">
+                <h2 className="card-title">Textile</h2>
+                <p className="text-sm opacity-60">$4.30 / kg</p>
+                <input type="range" min={0} max="100" value={textileQty} className="range" onChange={e => setTextileQty(Number.parseInt(e.target.value))} />
+                <p>{textileQty} kg</p>
+                <p className="text-sm text-gray-500">${(textileQty * 4.3).toFixed(2)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-center">
+            <button className="btn btn-outline btn-accent" onClick={handleAddToCart}>Ajouter au panier</button>
+          </div>
+
+          <div className="mt-6">
+            <ul className="list bg-base-100 rounded-box shadow-md max-w-2xl mx-auto">
+              <h2 className="p-4 pb-2 text-xl font-bold">Stocks</h2>
+              <li className="p-4 pb-2 text-xs opacity-60 tracking-wide">20 derniers objets collectés</li>
+              {materials
+                .sort((a: any, b: any) => {
+                  const dateA = new Date(`${a.receiving_date} ${a.receiving_time}`);
+                  const dateB = new Date(`${b.receiving_date} ${b.receiving_time}`);
+                  return dateB.getTime() - dateA.getTime();
+                })
+                .slice(0, 10)
+                .map((item: any, index: number) => (
+                  <li key={index} className="list-row">
+                    <div>
+                      <img
+                        className="size-15 rounded-box object-cover"
+                        src={`/image/${Math.floor(Math.random() * 3) + 1}.jpg`}
+                        alt={item.item_name}
+                      />
+                    </div>
+                    <div className="place-content-between">
+                      <div>
+                        <div className="font-semibold">{item.item_name}</div>
+                        <div className="text-xs uppercase font-semibold opacity-60">{item.material_category}</div>
+                      </div>
+                        <p className="list-col-wrap text-xs">
+                        {item.description.charAt(0).toUpperCase() + item.description.slice(1).toLowerCase()}
+                        </p>
+                    </div>
+                    
+                  </li>
+                ))}
+            </ul>
+          </div>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+    </Layout>
   );
 }
