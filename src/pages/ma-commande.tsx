@@ -29,12 +29,6 @@ const PRICES: Record<string, number> = {
 
 type Material = "Plastic" | "Metal" | "Textile";
 
-const LAMBDAS: Record<Material, number> = {
-  Plastic: 1.135,
-  Metal: 0.151,
-  Textile: 3.95,
-};
-
 const STOCK: Record<Material, number> = {
   Plastic: 12,
   Metal: 3,
@@ -89,8 +83,8 @@ function etaDate(days: number): Date {
  * @param requestedKg Quantité souhaitée (kg)
  * @param level      "50" | "75" | "100" (pour 50 %, 75 %, 100 %)
  */
-function estimate(material: Material, requestedKg: number, level: "50" | "75" | "100") {
-  const lambda = LAMBDAS[material];
+function estimate(material: Material, requestedKg: number, level: "50" | "75" | "100", lambdas: Record<Material, number>) {
+  const lambda = lambdas[material];
   const current = STOCK[material] ?? 0;
   const missing = Math.max(requestedKg - current, 0);
   const q = LEVELS[level];
@@ -118,16 +112,57 @@ function estimate(material: Material, requestedKg: number, level: "50" | "75" | 
    EXEMPLES DE TEST
 ------------------------------------------------------------------ */
 
-console.log(estimate("Plastic", 50, "50"));
-console.log(estimate("Plastic", 50, "75"));
-console.log(estimate("Plastic", 50, "100"));
+console.log(estimate("Plastic", 50, "50", {Plastic:1, Metal:1, Textile:1}));
+console.log(estimate("Plastic", 50, "75", {Plastic:1, Metal:1, Textile:1}));
+console.log(estimate("Plastic", 50, "100", {Plastic:1, Metal:1, Textile:1}));
 
-console.log(estimate("Metal", 80, "75"));
+console.log(estimate("Metal", 80, "75", {Plastic:1, Metal:1, Textile:1}));
 
 export default function MaCommande() {
   const [commande, setCommande] = useState<Commande[]>([]);
+  const [lambdas, setLambdas] = useState<Record<Material, number>>({
+    Plastic: 1,
+    Metal: 1,
+    Textile: 1,
+  });
   const search = useSearchParams();
   const id = search.get("id");
+
+  useEffect(() => {
+    fetch("/api/materials")
+      .then(res => res.json())
+      .then((data: any[]) => {
+        const grouped: Record<Material, { totalWeight: number; dates: string[] }> = {
+          Plastic: { totalWeight: 0, dates: [] },
+          Metal: { totalWeight: 0, dates: [] },
+          Textile: { totalWeight: 0, dates: [] },
+        };
+
+        for (const item of data) {
+          const cat = item.material_category;
+          const weight = parseFloat(item.item_weight);
+          const date = item.receiving_date;
+          if (!cat || isNaN(weight)) continue;
+
+          if (cat === "Plastic" || cat === "Metal" || cat === "Textile") {
+            grouped[cat].totalWeight += weight;
+            grouped[cat].dates.push(date);
+          }
+        }
+
+        const result: Record<Material, number> = { Plastic: 1, Metal: 1, Textile: 1 };
+        for (const mat of ["Plastic", "Metal", "Textile"] as Material[]) {
+          const { totalWeight, dates } = grouped[mat];
+          const sortedDates = dates.map(d => new Date(d)).sort((a, b) => a.getTime() - b.getTime());
+          const first = sortedDates[0];
+          const last = sortedDates[sortedDates.length - 1];
+          const days = (last.getTime() - first.getTime()) / 86400000 || 1;
+          result[mat] = Math.max(0.01, totalWeight / days);
+        }
+
+        setLambdas(result);
+      });
+  }, []);
   
   useEffect(() => {
     if (!id) return;
@@ -151,7 +186,7 @@ export default function MaCommande() {
   const chartData = (item: Commande) => {
     const mat = item.type === "plastique" ? "Plastic" : item.type === "metal" ? "Metal" : "Textile";
     const levels: ("50" | "75" | "100")[] = ["50", "75", "100"];
-    const estimations = levels.map((lvl) => estimate(mat, item.quantity, lvl));
+    const estimations = levels.map((lvl) => estimate(mat, item.quantity, lvl, lambdas));
 
     const labels = levels.map(lvl => `${lvl}%`);
     const daysData = estimations.map(e => {
@@ -182,9 +217,18 @@ export default function MaCommande() {
     scales: {
       y: {
         beginAtZero: true,
+        ticks: {
+          display: false,
+        },
         title: {
           display: true,
           text: "Jours",
+        },
+      },
+      x: {
+        title: {
+          display: true,
+          text: "Niveau de certitude (%)",
         },
       },
     },
@@ -245,7 +289,7 @@ export default function MaCommande() {
                     {["50", "75", "100"].map(level => {
                       const maxEta = commande.reduce((latest, item) => {
                         const mat = item.type === "plastique" ? "Plastic" : item.type === "metal" ? "Metal" : "Textile";
-                        const eta = estimate(mat, item.quantity, level as "50" | "75" | "100").eta;
+                        const eta = estimate(mat, item.quantity, level as "50" | "75" | "100", lambdas).eta;
                         return eta > latest ? eta : latest;
                       }, new Date(0));
                       return (
@@ -272,7 +316,7 @@ export default function MaCommande() {
                       {commande.map((item) => {
                         const mat = item.type === "plastique" ? "Plastic" : item.type === "metal" ? "Metal" : "Textile";
                         const levels: ("50" | "75" | "100")[] = ["50", "75", "100"];
-                        const estimations = levels.map((lvl) => estimate(mat, item.quantity, lvl));
+                        const estimations = levels.map((lvl) => estimate(mat, item.quantity, lvl, lambdas));
                         return (
                           <div key={item.type} className="card bg-base-200 p-4 shadow">
                             <h3 className="text-lg font-semibold mb-2 capitalize">{item.type}</h3>
@@ -284,7 +328,7 @@ export default function MaCommande() {
                               ))}
                             </ul>
                             <div className="mt-4 text-xs opacity-60">
-                              Estimé via un processus de Poisson avec λ = {LAMBDAS[mat]}.
+                              Estimé via un processus de Poisson avec λ = {lambdas[mat]}.
                             </div>
                             <div className="mt-4 text-center">
                               <Bar options={chartOptions} data={chartData(item)} />

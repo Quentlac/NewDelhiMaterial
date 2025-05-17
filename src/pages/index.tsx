@@ -15,6 +15,7 @@ export default function Test() {
   const [textileQty, setTextileQty] = useState<number>(0);
   const [plasticQty, setPlasticQty] = useState<number>(0);
   const [cart, setCart] = useState({ count: 0, subtotal: 0 });
+  const [available, setAvailable] = useState({ Plastic: 0, Metal: 0, Textile: 0 });
 
   const router = useRouter();
   const handlePayNow = async () => {
@@ -48,6 +49,21 @@ export default function Test() {
   useEffect(() => {
     getTimeToOrder(metalQty, textileQty, plasticQty).then(q => setTime(q));
   }, [metalQty, textileQty, plasticQty]);
+
+  useEffect(() => {
+    if (!materials) return;
+
+    const stock = { Plastic: 0, Metal: 0, Textile: 0 };
+    for (const m of materials) {
+      const cat = m.material_category;
+      const weight = parseFloat(m.item_weight);
+      if (!cat || isNaN(weight)) continue;
+      if (cat === "Plastic" || cat === "Metal" || cat === "Textile") {
+        stock[cat] += weight;
+      }
+    }
+    setAvailable(stock);
+  }, [materials]);
 
   const handleAddToCart = () => {
     const newSubtotal = (
@@ -85,7 +101,6 @@ export default function Test() {
                   PureDelhiMaterials propose des matières recyclées de haute qualité — plastiques, métaux et textiles — en gros pour les professionnels.
                   Grâce à notre méthode de tri et traitement automatisée, nous offrons des matériaux fiables, écoresponsables et immédiatement disponibles.
                 </p>
-                <button className="btn btn-primary">Commençons</button>
               </div>
             </div>
           </div>
@@ -99,7 +114,12 @@ export default function Test() {
               <div className="card-body items-center text-center">
                 <h2 className="card-title">Plastique</h2>
                 <p className="text-sm opacity-60">$1.40 / kg</p>
-                <input type="range" min={0} max="100" value={plasticQty} className="range" onChange={e => setPlasticQty(Number.parseInt(e.target.value))} />
+                <p className="text-xs opacity-60">{available.Plastic.toFixed(1)} kg disponibles</p>
+                <div className="flex items-center gap-2">
+                  <button className="btn btn-sm" onClick={() => setPlasticQty(q => Math.max(0, q - 1))}>-</button>
+                  <input type="range" min={0} max="100" value={plasticQty} className="range" onChange={e => setPlasticQty(Number.parseInt(e.target.value))} />
+                  <button className="btn btn-sm" onClick={() => setPlasticQty(q => Math.min(100, q + 1))}>+</button>
+                </div>
                 <p>{plasticQty} kg</p>
                 <p className="text-sm text-gray-500">${(plasticQty * 1.4).toFixed(2)}</p>
               </div>
@@ -110,7 +130,12 @@ export default function Test() {
               <div className="card-body items-center text-center">
                 <h2 className="card-title">Métal</h2>
                 <p className="text-sm opacity-60">$2.60 / kg</p>
-                <input type="range" min={0} max="100" value={metalQty} className="range" onChange={e => setMetalQty(Number.parseInt(e.target.value))} />
+                <p className="text-xs opacity-60">{available.Metal.toFixed(1)} kg disponibles</p>
+                <div className="flex items-center gap-2">
+                  <button className="btn btn-sm" onClick={() => setMetalQty(q => Math.max(0, q - 1))}>-</button>
+                  <input type="range" min={0} max="100" value={metalQty} className="range" onChange={e => setMetalQty(Number.parseInt(e.target.value))} />
+                  <button className="btn btn-sm" onClick={() => setMetalQty(q => Math.min(100, q + 1))}>+</button>
+                </div>
                 <p>{metalQty} kg</p>
                 <p className="text-sm text-gray-500">${(metalQty * 2.6).toFixed(2)}</p>
               </div>
@@ -121,7 +146,12 @@ export default function Test() {
               <div className="card-body items-center text-center">
                 <h2 className="card-title">Textile</h2>
                 <p className="text-sm opacity-60">$4.30 / kg</p>
-                <input type="range" min={0} max="100" value={textileQty} className="range" onChange={e => setTextileQty(Number.parseInt(e.target.value))} />
+                <p className="text-xs opacity-60">{available.Textile.toFixed(1)} kg disponibles</p>
+                <div className="flex items-center gap-2">
+                  <button className="btn btn-sm" onClick={() => setTextileQty(q => Math.max(0, q - 1))}>-</button>
+                  <input type="range" min={0} max="100" value={textileQty} className="range" onChange={e => setTextileQty(Number.parseInt(e.target.value))} />
+                  <button className="btn btn-sm" onClick={() => setTextileQty(q => Math.min(100, q + 1))}>+</button>
+                </div>
                 <p>{textileQty} kg</p>
                 <p className="text-sm text-gray-500">${(textileQty * 4.3).toFixed(2)}</p>
               </div>

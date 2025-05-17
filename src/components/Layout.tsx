@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState, useEffect } from "react";
 
 export default function Layout({
   children,
@@ -11,6 +11,16 @@ export default function Layout({
   cart: { count: number; subtotal: number };
   handlePayNow: () => void;
 }) {
+  const [theme, setTheme] = useState("dark");
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => (prev === "light" ? "dark" : "light"));
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -26,6 +36,9 @@ export default function Layout({
     </nav>
   </div>
   <div className="flex-none">
+    <button className="btn btn-sm btn-outline mr-2" onClick={toggleTheme}>
+      {theme === "light" ? "🌙 Mode sombre" : "☀️ Mode clair"}
+    </button>
     <div className="dropdown dropdown-end">
       <div tabIndex={0} role="button" className="btn btn-ghost btn-circle">
         <div className="indicator">
