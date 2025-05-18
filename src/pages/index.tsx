@@ -117,7 +117,14 @@ export default function Test() {
                 <p className="text-xs opacity-60">{available.Plastic.toFixed(1)} kg disponibles</p>
                 <div className="flex items-center gap-2">
                   <button className="btn btn-sm" onClick={() => setPlasticQty(q => Math.max(0, q - 1))}>-</button>
-                  <input type="range" min={0} max="100" value={plasticQty} className="range" onChange={e => setPlasticQty(Number.parseInt(e.target.value))} />
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={plasticQty}
+                    onChange={e => setPlasticQty(Number(e.target.value))}
+                    className="input input-sm input-bordered w-20 text-center"
+                  />
                   <button className="btn btn-sm" onClick={() => setPlasticQty(q => Math.min(100, q + 1))}>+</button>
                 </div>
                 <p>{plasticQty} kg</p>
@@ -133,7 +140,14 @@ export default function Test() {
                 <p className="text-xs opacity-60">{available.Metal.toFixed(1)} kg disponibles</p>
                 <div className="flex items-center gap-2">
                   <button className="btn btn-sm" onClick={() => setMetalQty(q => Math.max(0, q - 1))}>-</button>
-                  <input type="range" min={0} max="100" value={metalQty} className="range" onChange={e => setMetalQty(Number.parseInt(e.target.value))} />
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={metalQty}
+                    onChange={e => setMetalQty(Number(e.target.value))}
+                    className="input input-sm input-bordered w-20 text-center"
+                  />
                   <button className="btn btn-sm" onClick={() => setMetalQty(q => Math.min(100, q + 1))}>+</button>
                 </div>
                 <p>{metalQty} kg</p>
@@ -149,7 +163,14 @@ export default function Test() {
                 <p className="text-xs opacity-60">{available.Textile.toFixed(1)} kg disponibles</p>
                 <div className="flex items-center gap-2">
                   <button className="btn btn-sm" onClick={() => setTextileQty(q => Math.max(0, q - 1))}>-</button>
-                  <input type="range" min={0} max="100" value={textileQty} className="range" onChange={e => setTextileQty(Number.parseInt(e.target.value))} />
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={textileQty}
+                    onChange={e => setTextileQty(Number(e.target.value))}
+                    className="input input-sm input-bordered w-20 text-center"
+                  />
                   <button className="btn btn-sm" onClick={() => setTextileQty(q => Math.min(100, q + 1))}>+</button>
                 </div>
                 <p>{textileQty} kg</p>
