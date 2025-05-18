@@ -30,10 +30,11 @@ const PRICES: Record<string, number> = {
 type Material = "Plastic" | "Metal" | "Textile";
 
 const STOCK: Record<Material, number> = {
-  Plastic: 12,
-  Metal: 3,
-  Textile: 25,
+  Plastic: 906.8,
+  Metal: 120.5,
+  Textile: 3266.7,
 };
+
 
 const LEVELS: Record<"50" | "75" | "100", number> = {
   "50": 0.5,
@@ -83,10 +84,17 @@ function etaDate(days: number): Date {
  * @param requestedKg Quantité souhaitée (kg)
  * @param level      "50" | "75" | "100" (pour 50 %, 75 %, 100 %)
  */
-function estimate(material: Material, requestedKg: number, level: "50" | "75" | "100", lambdas: Record<Material, number>) {
+function estimate(
+  material: Material,
+  requestedKg: number,
+  level: "50" | "75" | "100",
+  lambdas: Record<Material, number>,
+  queueKg: number
+) {
   const lambda = lambdas[material];
   const current = STOCK[material] ?? 0;
-  const missing = Math.max(requestedKg - current, 0);
+  const effectiveStock = current - queueKg;
+  const missing = Math.max(requestedKg - effectiveStock, 0);
   const q = LEVELS[level];
 
   const days = missing > 0 ? daysForQuantile(missing, lambda, q) : 0;
@@ -96,7 +104,7 @@ function estimate(material: Material, requestedKg: number, level: "50" | "75" | 
     material,
     level: `${level}%`,
     requestedKg,
-    stockKg: current,
+    stockKg: effectiveStock,
     missingKg: missing,
     eta: date,
     etaString: date.toLocaleDateString("fr-FR", {
@@ -112,11 +120,11 @@ function estimate(material: Material, requestedKg: number, level: "50" | "75" | 
    EXEMPLES DE TEST
 ------------------------------------------------------------------ */
 
-console.log(estimate("Plastic", 50, "50", {Plastic:1, Metal:1, Textile:1}));
-console.log(estimate("Plastic", 50, "75", {Plastic:1, Metal:1, Textile:1}));
-console.log(estimate("Plastic", 50, "100", {Plastic:1, Metal:1, Textile:1}));
+console.log(estimate("Plastic", 50, "50", {Plastic:1, Metal:1, Textile:1}, 0));
+console.log(estimate("Plastic", 50, "75", {Plastic:1, Metal:1, Textile:1}, 0));
+console.log(estimate("Plastic", 50, "100", {Plastic:1, Metal:1, Textile:1}, 0));
 
-console.log(estimate("Metal", 80, "75", {Plastic:1, Metal:1, Textile:1}));
+console.log(estimate("Metal", 80, "75", {Plastic:1, Metal:1, Textile:1}, 0));
 
 export default function MaCommande() {
   const [commande, setCommande] = useState<Commande[]>([]);
@@ -125,39 +133,55 @@ export default function MaCommande() {
     Metal: 1,
     Textile: 1,
   });
+  const [priorOrders, setPriorOrders] = useState<any[]>([]);
   const search = useSearchParams();
   const id = search.get("id");
+
+  useEffect(() => {
+    fetch("/api/orders")
+      .then(res => res.json())
+      .then(data => {
+        const sorted = data.sort((a: any, b: any) => a.id - b.id);
+        setPriorOrders(sorted);
+      });
+  }, []);
 
   useEffect(() => {
     fetch("/api/materials")
       .then(res => res.json())
       .then((data: any[]) => {
-        const grouped: Record<Material, { totalWeight: number; dates: string[] }> = {
-          Plastic: { totalWeight: 0, dates: [] },
-          Metal: { totalWeight: 0, dates: [] },
-          Textile: { totalWeight: 0, dates: [] },
+        // Regroupe les poids par matériau et heure complète (YYYY-MM-DD HH)
+        const hourlyBuckets: Record<Material, Record<string, number>> = {
+          Plastic: {},
+          Metal: {},
+          Textile: {},
         };
 
         for (const item of data) {
           const cat = item.material_category;
           const weight = parseFloat(item.item_weight);
           const date = item.receiving_date;
-          if (!cat || isNaN(weight)) continue;
+          const time = item.receiving_time;
 
+          if (!cat || isNaN(weight)) continue;
           if (cat === "Plastic" || cat === "Metal" || cat === "Textile") {
-            grouped[cat].totalWeight += weight;
-            grouped[cat].dates.push(date);
+            // hourKey = YYYY-MM-DD HH
+            const hourKey = `${date} ${time}`.slice(0, 13);
+            if (!hourlyBuckets[cat][hourKey]) {
+              hourlyBuckets[cat][hourKey] = 0;
+            }
+            hourlyBuckets[cat][hourKey] += weight;
           }
         }
 
-        const result: Record<Material, number> = { Plastic: 1, Metal: 1, Textile: 1 };
+        // Calcule la moyenne des poids horaires pour chaque matériau
+        const result: Record<Material, number> = { Plastic: 0.01, Metal: 0.01, Textile: 0.01 };
+
         for (const mat of ["Plastic", "Metal", "Textile"] as Material[]) {
-          const { totalWeight, dates } = grouped[mat];
-          const sortedDates = dates.map(d => new Date(d)).sort((a, b) => a.getTime() - b.getTime());
-          const first = sortedDates[0];
-          const last = sortedDates[sortedDates.length - 1];
-          const days = (last.getTime() - first.getTime()) / 86400000 || 1;
-          result[mat] = Math.max(0.01, totalWeight / days);
+          const hourlyWeights = Object.values(hourlyBuckets[mat]);
+          if (hourlyWeights.length === 0) continue;
+          const avg = hourlyWeights.reduce((sum, val) => sum + val, 0) / hourlyWeights.length;
+          result[mat] = Math.max(0.01, avg);
         }
 
         setLambdas(result);
@@ -180,13 +204,29 @@ export default function MaCommande() {
       });
   }, [id]);
 
+  const getQueueFor = (id: number, material: Material): number => {
+    return priorOrders
+      .filter((o) => o.id < id)
+      .reduce((sum, o) => {
+        const qty = material === "Plastic" ? o.plastic_qty :
+                    material === "Metal" ? o.metal_qty : o.textile_qty;
+        return sum + (qty ?? 0);
+      }, 0);
+  };
+
+  const getPositionInQueue = (id: number): number => {
+    return priorOrders.findIndex((o) => o.id === id) + 1;
+  };
+
   const total = commande.reduce((sum, item) => sum + item.quantity * item.pricePerKg, 0);
+  const position = id ? getPositionInQueue(Number(id)) : null;
 
   // Prepare data for charts per material
   const chartData = (item: Commande) => {
     const mat = item.type === "plastique" ? "Plastic" : item.type === "metal" ? "Metal" : "Textile";
     const levels: ("50" | "75" | "100")[] = ["50", "75", "100"];
-    const estimations = levels.map((lvl) => estimate(mat, item.quantity, lvl, lambdas));
+    const queueKg = id ? getQueueFor(Number(id), mat) : 0;
+    const estimations = levels.map((lvl) => estimate(mat, item.quantity, lvl, lambdas, queueKg));
 
     const labels = levels.map(lvl => `${lvl}%`);
     const daysData = estimations.map(e => {
@@ -241,6 +281,42 @@ export default function MaCommande() {
     <Layout cart={cart} handlePayNow={handlePayNow}>
       <div className="min-h-screen bg-base-100 p-6">
         <h1 className="text-3xl font-bold text-center mb-6">Ma commande</h1>
+        {position && (
+          <div className="alert alert-info mb-6 shadow">
+            <span>Votre commande est en position <strong>{position}</strong> dans la file de traitement.</span>
+          </div>
+        )}
+        {(() => {
+          const allMissing = commande.some(item => {
+            const mat = item.type === "plastique" ? "Plastic" : item.type === "metal" ? "Metal" : "Textile";
+            const queueKg = id ? getQueueFor(Number(id), mat) : 0;
+            const effectiveStock = STOCK[mat] - queueKg;
+            return item.quantity > effectiveStock;
+          });
+
+          if (allMissing) {
+            const maxEta = ["50", "75", "100"].map(level => {
+              return commande.reduce((latest, item) => {
+                const mat = item.type === "plastique" ? "Plastic" : item.type === "metal" ? "Metal" : "Textile";
+                const queueKg = id ? getQueueFor(Number(id), mat) : 0;
+                const eta = estimate(mat, item.quantity, level as "50" | "75" | "100", lambdas, queueKg).eta;
+                return eta > latest ? eta : latest;
+              }, new Date(0));
+            }).pop();
+
+            return (
+              <div className="alert alert-warning mb-6 shadow">
+                <span>Tous les éléments de votre commande ne sont pas disponibles en quantité suffisante.
+                Votre commande devrait être prête d'ici le <strong>{maxEta?.toLocaleDateString("fr-FR", {
+                  day: "2-digit",
+                  month: "long",
+                  year: "numeric",
+                })}</strong>.</span>
+              </div>
+            );
+          }
+          return null;
+        })()}
         <div className="overflow-x-auto">
           <table className="table w-full bg-base-200 rounded-box shadow">
             <thead>
@@ -289,7 +365,8 @@ export default function MaCommande() {
                     {["50", "75", "100"].map(level => {
                       const maxEta = commande.reduce((latest, item) => {
                         const mat = item.type === "plastique" ? "Plastic" : item.type === "metal" ? "Metal" : "Textile";
-                        const eta = estimate(mat, item.quantity, level as "50" | "75" | "100", lambdas).eta;
+                        const queueKg = id ? getQueueFor(Number(id), mat) : 0;
+                        const eta = estimate(mat, item.quantity, level as "50" | "75" | "100", lambdas, queueKg).eta;
                         return eta > latest ? eta : latest;
                       }, new Date(0));
                       return (
@@ -316,7 +393,8 @@ export default function MaCommande() {
                       {commande.map((item) => {
                         const mat = item.type === "plastique" ? "Plastic" : item.type === "metal" ? "Metal" : "Textile";
                         const levels: ("50" | "75" | "100")[] = ["50", "75", "100"];
-                        const estimations = levels.map((lvl) => estimate(mat, item.quantity, lvl, lambdas));
+                        const queueKg = id ? getQueueFor(Number(id), mat) : 0;
+                        const estimations = levels.map((lvl) => estimate(mat, item.quantity, lvl, lambdas, queueKg));
                         return (
                           <div key={item.type} className="card bg-base-200 p-4 shadow">
                             <h3 className="text-lg font-semibold mb-2 capitalize">{item.type}</h3>

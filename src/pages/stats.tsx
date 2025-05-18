@@ -1,46 +1,46 @@
 import { useEffect, useState } from "react";
+import useSWR from 'swr';
 import Layout from "@/components/Layout";
 import { Line } from "react-chartjs-2";
 import { Chart as ChartJS, LineElement, CategoryScale, LinearScale, PointElement } from "chart.js";
 
 ChartJS.register(LineElement, CategoryScale, LinearScale, PointElement);
 
-const fakeForecast = (start: number, days: number, lambda: number) => {
-  const values = [];
-  let current = start;
-  for (let i = 0; i < days; i++) {
-    const arrival = Math.floor(Math.random() * lambda);
-    current += arrival;
-    values.push(current);
-  }
-  return values;
-};
+const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export default function Stats() {
   const [cart] = useState({ count: 0, subtotal: 0 });
   const handlePayNow = () => {};
 
   const forecastDays = 10;
-  const forecast = {
-    plastic: fakeForecast(320, forecastDays, 6),
-    metal: fakeForecast(210, forecastDays, 4),
-    textile: fakeForecast(120, forecastDays, 3),
+
+  const { data: orders } = useSWR('/api/orders', fetcher);
+
+  const plasticCumul: number[] = [];
+  const metalCumul: number[] = [];
+  const textileCumul: number[] = [];
+
+  let p = 0, m = 0, t = 0;
+  if (orders && Array.isArray(orders)) {
+    for (const order of orders) {
+      p += order.plastic_qty ?? 0;
+      m += order.metal_qty ?? 0;
+      t += order.textile_qty ?? 0;
+      plasticCumul.push(p);
+      metalCumul.push(m);
+      textileCumul.push(t);
+    }
+  }
+
+  const labelsOrders = orders && Array.isArray(orders) ? orders.map((_: any, i: number) => `Commande ${i + 1}`) : [];
+
+  const initialStock = { Plastic: 906.8, Metal: 120.5, Textile: 3266.7 };
+
+  const remaining = {
+    Plastic: initialStock.Plastic - (plasticCumul[plasticCumul.length - 1] ?? 0),
+    Metal: initialStock.Metal - (metalCumul[metalCumul.length - 1] ?? 0),
+    Textile: initialStock.Textile - (textileCumul[textileCumul.length - 1] ?? 0),
   };
-
-  const labels = Array.from({ length: forecastDays }, (_, i) => `Jour ${i + 1}`);
-
-  const chartData = (label: string, data: number[], color: string) => ({
-    labels,
-    datasets: [
-      {
-        label,
-        data,
-        fill: false,
-        borderColor: color,
-        tension: 0.1,
-      },
-    ],
-  });
 
   return (
     <Layout cart={cart} handlePayNow={handlePayNow}>
@@ -49,44 +49,23 @@ export default function Stats() {
 
         <section className="mb-10">
           <h2 className="text-xl font-semibold mb-2">Disponibilités actuelles estimées</h2>
-          <ul className="space-y-2">
-            <li>Plastique : 320 kg</li>
-            <li>Métal : 210 kg</li>
-            <li>Textile : 120 kg</li>
+          <ul className="space-y-2 text-sm opacity-80">
+            <li>
+              Plastique : {remaining.Plastic >= 0
+                ? `${remaining.Plastic.toFixed(1)} kg restants`
+                : `À court de stock, en cours de réapprovisionnement (${Math.abs(remaining.Plastic).toFixed(1)} kg manquants)`}
+            </li>
+            <li>
+              Métal : {remaining.Metal >= 0
+                ? `${remaining.Metal.toFixed(1)} kg restants`
+                : `À court de stock, en cours de réapprovisionnement (${Math.abs(remaining.Metal).toFixed(1)} kg manquants)`}
+            </li>
+            <li>
+              Textile : {remaining.Textile >= 0
+                ? `${remaining.Textile.toFixed(1)} kg restants`
+                : `À court de stock, en cours de réapprovisionnement (${Math.abs(remaining.Textile).toFixed(1)} kg manquants)`}
+            </li>
           </ul>
-        </section>
-
-        <section className="mb-10">
-          <h2 className="text-xl font-semibold mb-2">Prévisions sur les 10 prochains jours</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-base-200 p-4 rounded-box shadow">
-              <Line data={chartData("Plastique (kg)", forecast.plastic, "#60A5FA")} />
-            </div>
-            <div className="bg-base-200 p-4 rounded-box shadow">
-              <Line data={chartData("Métal (kg)", forecast.metal, "#34D399")} />
-            </div>
-            <div className="bg-base-200 p-4 rounded-box shadow">
-              <Line data={chartData("Textile (kg)", forecast.textile, "#F472B6")} />
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-xl font-semibold mb-2">Méthode de prévision</h2>
-          <p className="text-sm opacity-80">
-            Les prévisions sont simulées à partir d’un modèle stochastique inspiré d’un processus de Poisson :
-            on suppose que les arrivées de matériaux suivent une distribution aléatoire avec une intensité constante λ
-            (plastique : 6, métal : 4, textile : 3). Ces graphiques sont des exemples visuels pour comprendre l’évolution
-            possible des stocks dans le temps.
-          </p>
-        </section>
-
-        <section className="mt-12">
-          <h2 className="text-xl font-semibold mb-4">Historique des commandes</h2>
-          <div className="bg-base-200 p-4 rounded-box shadow mb-2">
-            <Line data={chartData("Commandes / jour", fakeForecast(5, forecastDays, 2), "#FBBF24")} />
-          </div>
-          <p className="text-sm opacity-60">Ce graphique montre une estimation du nombre de commandes passées chaque jour sur les 10 derniers jours.</p>
         </section>
 
         <section className="mt-12">
@@ -94,52 +73,113 @@ export default function Stats() {
           <div className="bg-base-200 p-4 rounded-box shadow mb-2">
             <Line
               data={{
-                labels,
+                labels: labelsOrders,
                 datasets: [
                   {
                     label: "Plastique",
-                    data: fakeForecast(100, forecastDays, 5),
+                    data: plasticCumul,
                     borderColor: "#3B82F6",
                     tension: 0.1,
                   },
                   {
                     label: "Métal",
-                    data: fakeForecast(80, forecastDays, 3),
+                    data: metalCumul,
                     borderColor: "#10B981",
                     tension: 0.1,
                   },
                   {
                     label: "Textile",
-                    data: fakeForecast(60, forecastDays, 2),
+                    data: textileCumul,
                     borderColor: "#EC4899",
                     tension: 0.1,
                   },
                 ],
               }}
-            />
-          </div>
-          <p className="text-sm opacity-60">Volume cumulé estimé des matériaux commandés depuis le début de la semaine.</p>
-        </section>
-
-        <section className="mt-12">
-          <h2 className="text-xl font-semibold mb-4">Prévision des délais moyens</h2>
-          <div className="bg-base-200 p-4 rounded-box shadow mb-2">
-            <Line
-              data={{
-                labels,
-                datasets: [
-                  {
-                    label: "Délais moyens (jours)",
-                    data: fakeForecast(2, forecastDays, 1),
-                    borderColor: "#F97316",
-                    tension: 0.1,
+              options={{
+                responsive: true,
+                plugins: {
+                  legend: { position: 'top' },
+                },
+                scales: {
+                  x: {
+                    title: {
+                      display: true,
+                      text: "Commandes",
+                    },
                   },
-                ],
+                  y: {
+                    title: {
+                      display: true,
+                      text: "Quantité commandée (kg)",
+                    },
+                    beginAtZero: true,
+                  },
+                },
               }}
             />
           </div>
-          <p className="text-sm opacity-60">Prévision de la durée moyenne estimée avant que les commandes soient livrées, en fonction de la disponibilité des matériaux.</p>
+          <p className="text-sm opacity-60">Volume cumulé réel ou simulé des matériaux commandés pour les 10 dernières commandes.</p>
+          <p className="text-sm mt-4">Total vendu :</p>
+          <ul className="text-sm opacity-70 mb-6">
+            <li>Plastique : {plasticCumul[plasticCumul.length - 1] ?? 0} kg</li>
+            <li>Métal : {metalCumul[metalCumul.length - 1] ?? 0} kg</li>
+            <li>Textile : {textileCumul[textileCumul.length - 1] ?? 0} kg</li>
+          </ul>
         </section>
+
+        {/* Coût moyen par commande */}
+        {(() => {
+          const costs = orders?.map((o: any) => o.total_price ?? 0) ?? [];
+          return (
+            <section className="mt-12">
+              <h2 className="text-xl font-semibold mb-4">Coût total par commande</h2>
+              <div className="bg-base-200 p-4 rounded-box shadow mb-2">
+                <Line
+                  data={{
+                    labels: labelsOrders,
+                    datasets: [
+                      {
+                        label: "Coût total ($)",
+                        data: costs,
+                        borderColor: "#F59E0B",
+                        tension: 0.1,
+                      },
+                    ],
+                  }}
+                  options={{
+                    responsive: true,
+                    plugins: {
+                      legend: { position: 'top' },
+                      tooltip: {
+                        callbacks: {
+                          label: function (context: any) {
+                            return `${context.dataset.label}: $${context.formattedValue}`;
+                          }
+                        }
+                      }
+                    },
+                    scales: {
+                      x: {
+                        title: {
+                          display: true,
+                          text: "Commandes",
+                        },
+                      },
+                      y: {
+                        title: {
+                          display: true,
+                          text: "Montant ($)",
+                        },
+                        beginAtZero: true,
+                      },
+                    },
+                  }}
+                />
+              </div>
+              <p className="text-sm opacity-60">Coût total en dollars pour chaque commande passée.</p>
+            </section>
+          );
+        })()}
       </div>
     </Layout>
   );
