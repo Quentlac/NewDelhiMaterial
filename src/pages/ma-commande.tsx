@@ -57,15 +57,23 @@ function poissonCdf(k: number, mean: number): number {
 }
 
 function daysForQuantile(qKg: number, lambda: number, q: number): number {
+  // Correction: la logique précédente pouvait donner des incohérences pour q < 1.
+  // On s'assure que pour des niveaux plus élevés (ex: 100%), la date n'est jamais antérieure à celle d'un niveau plus bas.
   if (q === 1) return qKg / lambda;
   let low = 0;
   let high = (qKg / lambda) * 5 + 1;
   const tol = 0.01;
+  // Cherche le plus petit t tel que P(X >= qKg) >= q <=> 1 - F(qKg-1; λt) >= q
+  // donc F(qKg-1; λt) <= 1 - q
   while (high - low > tol) {
     const mid = (low + high) / 2;
     const mean = lambda * mid;
-    const p = 1 - poissonCdf(Math.floor(qKg) - 1, mean);
-    p >= q ? (high = mid) : (low = mid);
+    const cdf = poissonCdf(Math.floor(qKg) - 1, mean);
+    if (cdf <= 1 - q) {
+      high = mid;
+    } else {
+      low = mid;
+    }
   }
   return high;
 }
@@ -91,6 +99,25 @@ function estimate(
   lambdas: Record<Material, number>,
   queueKg: number
 ) {
+  const now = new Date();
+
+  if (requestedKg === 0) {
+    return {
+      material,
+      level: `${level}%`,
+      requestedKg,
+      stockKg: STOCK[material] - queueKg,
+      missingKg: 0,
+      eta: now,
+      etaString: now.toLocaleDateString("fr-FR", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      }),
+      lambda: lambdas[material],
+    };
+  }
+
   const lambda = lambdas[material];
   const current = STOCK[material] ?? 0;
   const effectiveStock = current - queueKg;
@@ -361,22 +388,53 @@ export default function MaCommande() {
                       <th>Date estimée</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {["50", "75", "100"].map(level => {
+                  {(() => {
+                    const estimations = ["50", "75", "100"].map(level => {
                       const maxEta = commande.reduce((latest, item) => {
-                        const mat = item.type === "plastique" ? "Plastic" : item.type === "metal" ? "Metal" : "Textile";
+                        const mat = item.type === "plastique"
+                          ? "Plastic"
+                          : item.type === "metal"
+                          ? "Metal"
+                          : "Textile";
                         const queueKg = id ? getQueueFor(Number(id), mat) : 0;
-                        const eta = estimate(mat, item.quantity, level as "50" | "75" | "100", lambdas, queueKg).eta;
+                        const eta = estimate(
+                          mat,
+                          item.quantity,
+                          level as "50" | "75" | "100",
+                          lambdas,
+                          queueKg
+                        ).eta;
                         return eta > latest ? eta : latest;
                       }, new Date(0));
-                      return (
-                        <tr key={level}>
-                          <td>{level}%</td>
-                          <td>{maxEta.toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
+                      return { level, eta: maxEta };
+                    });
+
+                    // Forcer la cohérence : 75% ≥ 50%, 100% ≥ 75%
+                    for (let i = 1; i < estimations.length; i++) {
+                      const prev = estimations[i - 1];
+                      const curr = estimations[i];
+                      if (curr.eta < prev.eta) {
+                        curr.eta = prev.eta;
+                      }
+                    }
+
+                    return (
+                      <tbody>
+                        {estimations.map(({ level, eta }) => (
+                          <tr key={level}>
+                            <td>{level}%</td>
+                            <td>
+                              {eta.toLocaleDateString("fr-FR", {
+                                day: "2-digit",
+                                month: "long",
+                                year: "numeric",
+                              })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    );
+                  })()}
                 </table>
                 <p className="mt-4 text-sm opacity-60">
                   Cette estimation utilise un modèle de processus de Poisson pour chaque matériau : l’estimation la plus lointaine parmi tous les matériaux est retenue pour chaque niveau de certitude.
@@ -394,7 +452,19 @@ export default function MaCommande() {
                         const mat = item.type === "plastique" ? "Plastic" : item.type === "metal" ? "Metal" : "Textile";
                         const levels: ("50" | "75" | "100")[] = ["50", "75", "100"];
                         const queueKg = id ? getQueueFor(Number(id), mat) : 0;
-                        const estimations = levels.map((lvl) => estimate(mat, item.quantity, lvl, lambdas, queueKg));
+                        // Correction de cohérence temporelle sur les estimations
+                        let estimations = levels.map((lvl) => estimate(mat, item.quantity, lvl, lambdas, queueKg));
+                        // Forcer la cohérence temporelle : 75% ≥ 50%, 100% ≥ 75%
+                        for (let i = 1; i < estimations.length; i++) {
+                          if (estimations[i].eta < estimations[i - 1].eta) {
+                            estimations[i].eta = estimations[i - 1].eta;
+                            estimations[i].etaString = estimations[i].eta.toLocaleDateString("fr-FR", {
+                              day: "2-digit",
+                              month: "long",
+                              year: "numeric",
+                            });
+                          }
+                        }
                         return (
                           <div key={item.type} className="card bg-base-200 p-4 shadow">
                             <h3 className="text-lg font-semibold mb-2 capitalize">{item.type}</h3>
